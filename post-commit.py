@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+
 #
-# This script sends emails in the same format as SVN default commit emails. 
+# This script sends emails in the same format that SVN sends. 
 #
 # __author__ = manyubishnoi@gmail.com
 
+import cgi
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -19,6 +21,7 @@ def generate_blue_text_color(input_file):
             color: blue;
             text-align: left;
             font-size: 15px;
+            white-space: pre;
            }
         </style>
         </head>
@@ -39,6 +42,7 @@ def generate_blue_bg_color(input_line):
             text-align: center;
             font-size: 15px;
             font-family: monospace;
+            white-space: pre;
            }
         </style>
         </head>
@@ -60,6 +64,7 @@ def generate_red_bg_color(input_line):
             text-align: left;
             font-size: 12px;
             font-family: monospace;
+            white-space: pre;
            }
         </style>
         </head>
@@ -81,6 +86,7 @@ def generate_green_bg_color(input_line):
             text-align: left;
             font-size: 12px;
             font-family: monospace;
+            white-space: pre;
            }
         </style>
         </head>
@@ -102,6 +108,7 @@ def generate_grey_bg_color(input_line):
             text-align: left;
             font-size: 12px;
             font-family: monospace;
+            white-space: pre;
            }
         </style>
         </head>
@@ -162,18 +169,20 @@ def send_emails(commit_log, modified_files_list, verbose_diff_data_list):
     line_break = "\n\n"
     line_break_MIME = MIMEText(line_break, 'plain')
 
-    msg['Subject'] = 'Git commit notification'
-    msg['From'] = 'me@gmail.com'
-
-    # Getting the email ID of the last committer. 
     email_regex = re.compile('<(.*)>')
     email_only = re.findall(email_regex,commit_log[1])
     email_list.append(email_only[0])
 
-    msg['To'] = email_list[0]
+    author_regex = re.compile('Author: (.*) <')
+    author = re.findall(author_regex, commit_log[1])
+
+    msg['Subject'] = 'Change merged from %s: %s' %(author[0],commit_log[4].lstrip())
+    msg['From'] = 'me@gmail.com'
+    msg['To'] = ", ".join(email_list)
 
     for aline in commit_log[0:3]:
-        colored_file = generate_header(aline)
+        escaped_aline = cgi.escape(aline, True)
+        colored_file = generate_commit_template(escaped_aline)
         email_compatible_file_format = MIMEText(colored_file, 'html')
         msg.attach(email_compatible_file_format)
     
@@ -204,30 +213,30 @@ def send_emails(commit_log, modified_files_list, verbose_diff_data_list):
         email_compatible_format = ""
         if re.search("diff --git ",each):
             msg.attach(line_break_MIME)
-            colored_line = generate_blue_bg_color(each)
+            escaped_each = cgi.escape(each, True)
+            colored_line = generate_blue_bg_color(escaped_each)
             
         elif re.match("\+",each):
-            colored_line = generate_green_bg_color(each)
+            escaped_each = cgi.escape(each, True)
+            colored_line = generate_green_bg_color(escaped_each)
 
         elif re.match("-",each):
-            colored_line = generate_red_bg_color(each)
+            escaped_each = cgi.escape(each, True)
+            colored_line = generate_red_bg_color(escaped_each)
         else:
-            colored_line = generate_grey_bg_color(each)
+            escaped_each = cgi.escape(each, True)
+            colored_line = generate_grey_bg_color(escaped_each)
     
         email_compatible_diff_format = MIMEText(colored_line, 'html')
         msg.attach(email_compatible_diff_format)
- 
-    server = smtplib.SMTP('smtp.gmail.com')
-    server.sendmail(msg['From'], msg['To'], msg.as_string())
+    
+    server = smtplib.SMTP('relay.company.com')
+    server.sendmail(msg['From'], email_list, msg.as_string())
     server.quit()
 
-
-# Get the git log entry of the new commit
+# Get the git log entry of newest change
 git_last_commit_log = check_output(['git', 'log', '-1'])
 git_last_commit_log_list = git_last_commit_log.split('\n')
-
-#git_last_commit_msg = check_output(['git', 'log', '-1', '--pretty=%B'])
-#git_last_commit_msg_list = git_last_commit_msg.split('\n')
 
 files_changed = check_output(['git', 'diff', '--name-status', 'HEAD^..HEAD'])
 files_changed_list = files_changed.split('\n')
@@ -236,4 +245,3 @@ verbose_diff = check_output(['git', 'diff', 'HEAD^..HEAD'])
 verbose_diff_list = verbose_diff.split('\n')
 
 send_emails(git_last_commit_log_list, files_changed_list, verbose_diff_list)
-
